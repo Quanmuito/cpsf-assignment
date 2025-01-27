@@ -1,4 +1,4 @@
-@FileStorage_HostAddress = http://localhost:5000
+@FileStorage_HostAddress = http://localhost:8080
 
 GET {{FileStorage_HostAddress}}/health
 Accept: application/json

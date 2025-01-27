@@ -50,6 +50,8 @@ services:
       - test-assignment-cpsf
     depends_on:
       - localstack
+    volumes:
+      - ./:/src
 
 networks:
   test-assignment-cpsf:
