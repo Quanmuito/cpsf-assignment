@@ -1,0 +1,56 @@
+services:
+  aws-cli:
+    image: amazon/aws-cli:latest
+    container_name: awscli
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=key
+      - AWS_SECRET_ACCESS_KEY=secret
+    networks:
+      - test-assignment-cpsf
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack-cpsf
+    ports:
+      - 4566:4566
+    environment:
+      - SERVICES=dynamodb,s3,kms
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=docker
+      # set AWS configrations for localstack
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=key
+      - AWS_SECRET_ACCESS_KEY=secret
+    networks:
+      - test-assignment-cpsf
+    volumes:
+      # provision localstack
+      - ./init-scripts:/etc/localstack/init/ready.d
+      # share docker with localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    depends_on:
+      - aws-cli
+
+  filestorage-api:
+    build:
+      context: ./FileStorage
+      dockerfile: Dockerfile
+    image: filestorage-api:latest
+    container_name: filestorage-api
+    environment:
+      - AWS_ACCESS_KEY_ID=key
+      - AWS_SECRET_ACCESS_KEY=secret
+      - AWS_REGION=ue-east-1
+      - AWS_ENDPOINT_URL=http://localstack-cpsf:4566
+      - FileS_AWS__ServiceURL=http://localstack-cpsf:4566
+    ports:
+      - 8080:8080
+    networks:
+      - test-assignment-cpsf
+    depends_on:
+      - localstack
+
+networks:
+  test-assignment-cpsf:
+    driver: bridge
