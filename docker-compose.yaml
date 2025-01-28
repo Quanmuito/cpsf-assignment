@@ -43,15 +43,16 @@ services:
       - AWS_SECRET_ACCESS_KEY=secret
       - AWS_REGION=ue-east-1
       - AWS_ENDPOINT_URL=http://localstack-cpsf:4566
+      - AWS_BUCKET_NAME=storage
       - FileS_AWS__ServiceURL=http://localstack-cpsf:4566
+      - MIN_SIZE=128000 #128KB
+      - MAX_SIZE=2147483648 #2GB
     ports:
       - 8080:8080
     networks:
       - test-assignment-cpsf
     depends_on:
       - localstack
-    volumes:
-      - ./:/src
 
 networks:
   test-assignment-cpsf:
