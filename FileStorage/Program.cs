@@ -1,8 +1,22 @@
+using Microsoft.AspNetCore.Http.Features;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddHealthChecks();
+
+// Increase the multipart body size limit (default 128MB -> 2GB)
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 2147483648;
+});
+
+// Configure Kestrel to allow larger request bodies (default 30000000 bytes to 2GB)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 2147483648;
+});
 
 // Add logging services (default setup)
 builder.Logging.ClearProviders();
