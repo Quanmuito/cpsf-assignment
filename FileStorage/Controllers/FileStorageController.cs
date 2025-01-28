@@ -40,7 +40,7 @@ public class FileStorageController : ControllerBase
 
         if (!files.Any())
         {
-            return NoContent();
+            return BadRequest("No files uploaded.");
         }
 
         var config = new Config();
