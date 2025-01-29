@@ -1,13 +1,10 @@
-using Xunit;
 using Moq;
+using Xunit;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using FileStorage.Controllers;
 using FileStorage.Services;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.IO;
 
 namespace FileStorage.UnitTests;
 
@@ -18,10 +15,10 @@ public class FileStorageControllerTests
 
     public FileStorageControllerTests()
     {
-        // Initialize the mock
+        // Initialize the mock service
         mockFileStorageService = new Mock<IFileStorageService>();
 
-        // Inject the mock into the controller
+        // Inject the mock service into the controller
         controller = new FileStorageController(mockFileStorageService.Object);
     }
 
@@ -34,26 +31,6 @@ public class FileStorageControllerTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal(5, result.Length);
-    }
-
-    [Fact]
-    public async Task Upload_With_No_File()
-    {
-        // Set up context for request
-        var context = new DefaultHttpContext();
-        context.Request.Form = new FormCollection([]); // Empty collection
-        controller.ControllerContext = new ControllerContext()
-        {
-            HttpContext = context
-        };
-
-        // Action
-        var response = await controller.Upload();
-
-        // Assert
-        var result = Assert.IsType<BadRequestObjectResult>(response);
-        Assert.Equal(400, result.StatusCode);
-        Assert.Equal("No files uploaded.", result.Value);
     }
 
     [Fact]
@@ -71,10 +48,10 @@ public class FileStorageControllerTests
         var mockResponse = new StoreFileResponse
         {
             Message = "File store successfully",
-            ObjectKey = "test.txt-3f5b8c96-7d71-4c41-98d4-8762f34729a5",
+            ObjectKey = "text.txt-3f5b8c96-7d71-4c41-98d4-8762f34729a5",
             Metadata = new Metadata
             {
-                Filename = "test.txt",
+                Filename = "text.txt",
                 ContentType = "text/plain",
                 Size = 10,
                 Sha256 = "afd4fddfd45c5078d83d6294d1d4df6f179b2ff50288a76d719e3f2194fbf992",
@@ -102,13 +79,33 @@ public class FileStorageControllerTests
         Assert.Equal(mockResponse.ObjectKey, firstObject.ObjectKey);
 
         // Assert metadata properties
-        var metadata = ((dynamic)firstObject).Metadata;
+        var metadata = firstObject.Metadata;
         Assert.Equal(mockResponse.Metadata.Filename, metadata.Filename);
         Assert.Equal(mockResponse.Metadata.ContentType, metadata.ContentType);
         Assert.Equal(mockResponse.Metadata.Size, metadata.Size);
         Assert.Equal(mockResponse.Metadata.Sha256, metadata.Sha256);
         Assert.Equal(mockResponse.Metadata.BucketName, metadata.BucketName);
         Assert.Equal(mockResponse.Metadata.UploadedAt, metadata.UploadedAt);
+    }
+
+    [Fact]
+    public async Task Upload_With_No_File()
+    {
+        // Set up context for request
+        var context = new DefaultHttpContext();
+        context.Request.Form = new FormCollection([]); // Empty collection
+        controller.ControllerContext = new ControllerContext()
+        {
+            HttpContext = context
+        };
+
+        // Action
+        var response = await controller.Upload();
+
+        // Assert
+        var result = Assert.IsType<BadRequestObjectResult>(response);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("No files uploaded.", result.Value);
     }
 
     [Fact]
@@ -143,6 +140,8 @@ public class FileStorageControllerTests
         // Assert main properties
         var firstObject = objectList[0];
         Assert.Equal(mockResponse.Message, firstObject.Message);
+        Assert.Null(firstObject.ObjectKey);
+        Assert.Null(firstObject.Metadata);
         Assert.Equal(mockResponse.Error, firstObject.Error);
     }
 
@@ -170,14 +169,22 @@ public class FileStorageControllerTests
         Assert.Contains("Something went wrong:", result.Value.ToString());
     }
 
-    private FormCollection GetFormCollection()
+    private FormFile GetMockFile()
     {
-        var mockFile = new FormFile(new MemoryStream(new byte[10]), 0, 10, "Data", "test.txt")
+        var fileSize = 153600; // Default 150KB
+        var fileContent = new byte[fileSize];
+        new Random().NextBytes(fileContent);
+        var mockFile = new FormFile(new MemoryStream(fileContent), 0, fileSize, "Data", "text.txt")
         {
             Headers = new HeaderDictionary(),
             ContentType = "text/plain"
         };
+        return mockFile;
+    }
 
+    private FormCollection GetFormCollection()
+    {
+        var mockFile = GetMockFile();
         var fileCollection = new FormFileCollection { mockFile };
         return new FormCollection(new Dictionary<string, StringValues>(), fileCollection);
     }
