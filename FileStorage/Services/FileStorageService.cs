@@ -78,17 +78,16 @@ public class FileStorageService : IFileStorageService
             string uid = Guid.NewGuid().ToString();
             string key = $"{fileName}-{uid}";
 
-            // Start uploading using multipart upload. More info at: https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpu-upload-object.html
+            // Start uploading using multipart upload.
             string uploadId = await GetUploadId(key);
             int partNumber = 1;
             var partETags = new List<PartETag>();
+            byte[] buffer = new byte[5 * 1024 * 1024]; // 5MB buffer
 
             using SHA256 sha256 = SHA256.Create(); // Create the SHA-256 object
             using (var fileStream = file.OpenReadStream()) // Start streaming file content
             {
-                byte[] buffer = new byte[5 * 1024 * 1024]; // 5MB buffer
                 int bytesRead;
-
                 while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
                 {
                     // Handle upload data stream
@@ -129,6 +128,7 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Initialize a multipart upload
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TInitiateMultipartUploadRequest.html
      */
     private async Task<string> GetUploadId(string key)
     {
@@ -144,6 +144,7 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Upload each part
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TUploadPartRequest.html
      */
     private async Task<PartETag> UploadPart(string key, string id, int partNumber, MemoryStream stream)
     {
@@ -159,13 +160,14 @@ public class FileStorageService : IFileStorageService
 
         return new PartETag
         {
-            PartNumber = partNumber,
+            PartNumber = uploadPartResponse.PartNumber,
             ETag = uploadPartResponse.ETag
         };
     }
 
     /**
      * Complete the multipart upload
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TCompleteMultipartUploadRequest.html
      */
     private async Task<string> CompleteUpload(string key, string id, List<PartETag> parts)
     {
@@ -182,7 +184,23 @@ public class FileStorageService : IFileStorageService
     }
 
     /**
+     * Delete an object from S3
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TDeletedObject.html
+     */
+    private async void DeleteObject(string key)
+    {
+        // Delete file from S3 if DynamoDB operation fails
+        var deleteRequest = new DeleteObjectRequest
+        {
+            BucketName = bucketName,
+            Key = key
+        };
+        await amazonS3Client.DeleteObjectAsync(deleteRequest);
+    }
+
+    /**
      * Write hash to DynamoDB
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBPutItemPutItemRequest.html
      */
     private async Task<Metadata> PutMetadata(string key, SHA256 sha256, IFormFile file)
     {
@@ -217,13 +235,7 @@ public class FileStorageService : IFileStorageService
         }
         catch (Exception dbEx)
         {
-            // Delete file from S3 if DynamoDB operation fails
-            var deleteRequest = new DeleteObjectRequest
-            {
-                BucketName = bucketName,
-                Key = key
-            };
-            await amazonS3Client.DeleteObjectAsync(deleteRequest);
+            DeleteObject(key);
             throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}");
         }
     }
@@ -241,22 +253,4 @@ public class FileStorageService : IFileStorageService
 
         return BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();
     }
-}
-
-public class StoreFileResponse
-{
-    public string? Message { get; set; }
-    public string? ObjectKey { get; set; }
-    public Metadata? Metadata { get; set; }
-    public string? Error {get; set;}
-}
-
-public class Metadata
-{
-    public string? Filename { get; set; }
-    public string? ContentType { get; set; }
-    public long? Size { get; set; }
-    public string? Sha256 { get; set; }
-    public string? BucketName { get; set; }
-    public string? UploadedAt { get; set; }
 }
