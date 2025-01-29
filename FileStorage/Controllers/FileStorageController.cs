@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -49,7 +51,7 @@ public class FileStorageController : ControllerBase
             return StatusCode(500, "Invalid AWS credentials.");
         }
 
-        var awsS3Config = new AmazonS3Config
+        var amazonS3Config = new AmazonS3Config
         {
             ServiceURL = config.awsUrl,
             ForcePathStyle = true,
@@ -58,7 +60,17 @@ public class FileStorageController : ControllerBase
             Timeout = TimeSpan.FromSeconds(60),
             MaxErrorRetry = 5
         };
-        var awsS3Client = new AmazonS3Client(config.awsKey, config.awsSecret, awsS3Config);
+        var amazonS3Client = new AmazonS3Client(config.awsKey, config.awsSecret, amazonS3Config);
+
+        var dynamoDbConfig = new AmazonDynamoDBConfig
+        {
+            ServiceURL = config.awsUrl,
+            UseHttp = false,
+            DisableLogging = false,
+            Timeout = TimeSpan.FromSeconds(60),
+            MaxErrorRetry = 5
+        };
+        var dynamoDbClient = new AmazonDynamoDBClient(config.awsKey, config.awsSecret, dynamoDbConfig);
 
         try
         {
@@ -83,7 +95,7 @@ public class FileStorageController : ControllerBase
                     BucketName = bucketName,
                     Key = key
                 };
-                var initiateResponse = await awsS3Client.InitiateMultipartUploadAsync(initiateRequest);
+                var initiateResponse = await amazonS3Client.InitiateMultipartUploadAsync(initiateRequest);
 
                 string uploadId = initiateResponse.UploadId;
                 int partNumber = 1;
@@ -112,7 +124,7 @@ public class FileStorageController : ControllerBase
                             PartNumber = partNumber,
                             InputStream = memoryStream
                         };
-                        var uploadPartResponse = await awsS3Client.UploadPartAsync(uploadPartRequest);
+                        var uploadPartResponse = await amazonS3Client.UploadPartAsync(uploadPartRequest);
 
                         var partETag = new PartETag
                         {
@@ -140,12 +152,38 @@ public class FileStorageController : ControllerBase
                     UploadId = uploadId,
                     PartETags = partETags
                 };
-                var completeResponse = await awsS3Client.CompleteMultipartUploadAsync(completeRequest);
-                var fileHash = BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();
-
-                // Get the hash as a hexadecimal string
+                var completeResponse = await amazonS3Client.CompleteMultipartUploadAsync(completeRequest);
                 uploadedFiles.Add(completeResponse.Key);
-                hashes.Add(fileHash);
+
+                try
+                {
+                    // Write hash to DynamoDB
+                    var fileHash = BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();
+                    var putItemRequest = new PutItemRequest
+                    {
+                        TableName = config.tableName,
+                        ReturnValues = "ALL_OLD",
+                        Item = new Dictionary<string, AttributeValue>
+                        {
+                            { "Filename", new AttributeValue { S = fileName } },
+                            { "Sha256", new AttributeValue { S = fileHash } },
+                            { "UploadedAt", new AttributeValue { S = DateTime.UtcNow.ToString("o") } }
+                        }
+                    };
+                    var putItemResponse = await dynamoDbClient.PutItemAsync(putItemRequest);
+                    hashes.Add(fileHash);
+                }
+                catch (Exception dbEx)
+                {
+                    // Delete file from S3 if DynamoDB operation fails
+                    var deleteRequest = new DeleteObjectRequest
+                    {
+                        BucketName = bucketName,
+                        Key = key
+                    };
+                    await amazonS3Client.DeleteObjectAsync(deleteRequest);
+                    throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}");
+                }
             }
 
             object response = new

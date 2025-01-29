@@ -10,6 +10,7 @@ RUN dotnet restore "FileStorage.csproj"
 COPY . .
 WORKDIR "/src/"
 RUN dotnet add package AWSSDK.S3 --version 3.7.412.4
+RUN dotnet add package AWSSDK.DynamoDBv2 --version 3.7.405.12
 RUN dotnet build "FileStorage.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish

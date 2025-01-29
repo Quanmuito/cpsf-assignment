@@ -11,6 +11,7 @@ public class Config
     public string? bucketName;
     public int minSize;
     public uint maxSize;
+    public string? tableName;
 
     public Config()
     {
@@ -21,10 +22,11 @@ public class Config
         bucketName = Environment.GetEnvironmentVariable("AWS_BUCKET_NAME");
         minSize = Convert.ToInt32(Environment.GetEnvironmentVariable("MIN_SIZE"));
         maxSize = Convert.ToUInt32(Environment.GetEnvironmentVariable("MAX_SIZE"));
+        tableName = Environment.GetEnvironmentVariable("DYNAMO_TABLE_NAME");
     }
 
     public bool Validate()
     {
-        return awsKey != null && awsSecret != null && awsRegion != null && awsUrl != null && bucketName != null;
+        return awsKey != null && awsSecret != null && awsRegion != null && awsUrl != null && bucketName != null && tableName != null;
     }
 }
