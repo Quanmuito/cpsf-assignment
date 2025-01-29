@@ -22,10 +22,6 @@ builder.WebHost.ConfigureKestrel(options =>
 // Register your custom service
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 
-// Add logging services (default setup)
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

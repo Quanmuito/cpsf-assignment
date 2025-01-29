@@ -13,12 +13,12 @@ public class FileStorageService : IFileStorageService
     private readonly string? tableName;
     private readonly int minSize;
     private readonly uint maxSize;
-    private readonly AmazonS3Client amazonS3Client;
-    private readonly AmazonDynamoDBClient dynamoDbClient;
+    private readonly IAmazonS3 amazonS3Client;
+    private readonly IAmazonDynamoDB dynamoDbClient;
 
-    public FileStorageService()
+    public FileStorageService(Config? _config = null, IAmazonS3? _amazonS3Client = null, IAmazonDynamoDB? _dynamoDbClient = null)
     {
-        var config = new Config();
+        var config = _config ?? new Config();
         if (!config.Validate())
         {
             throw new Exception("Invalid AWS credentials.");
@@ -28,32 +28,47 @@ public class FileStorageService : IFileStorageService
         minSize = config.minSize;
         maxSize = config.maxSize;
 
-        // Initialize S3 client
-        var amazonS3Config = new AmazonS3Config
+        if (_amazonS3Client != null)
         {
-            ServiceURL = config.awsUrl,
-            ForcePathStyle = true,
-            UseHttp = false,
-            DisableLogging = false,
-            Timeout = TimeSpan.FromSeconds(60),
-            MaxErrorRetry = 5
-        };
-        amazonS3Client = new AmazonS3Client(config.awsKey, config.awsSecret, amazonS3Config);
+            amazonS3Client = _amazonS3Client;
+        }
+        else
+        {
+            // Initialize S3 client
+            var amazonS3Config = new AmazonS3Config
+            {
+                ServiceURL = config.awsUrl,
+                ForcePathStyle = true,
+                UseHttp = false,
+                DisableLogging = false,
+                Timeout = TimeSpan.FromSeconds(60),
+                MaxErrorRetry = 5
+            };
+            amazonS3Client = new AmazonS3Client(config.awsKey, config.awsSecret, amazonS3Config);
+        }
 
-        // Initialize Dynamo client
-        var dynamoDbConfig = new AmazonDynamoDBConfig
+        if (_dynamoDbClient != null)
         {
-            ServiceURL = config.awsUrl,
-            UseHttp = false,
-            DisableLogging = false,
-            Timeout = TimeSpan.FromSeconds(60),
-            MaxErrorRetry = 5
-        };
-        dynamoDbClient = new AmazonDynamoDBClient(config.awsKey, config.awsSecret, dynamoDbConfig);
+            dynamoDbClient = _dynamoDbClient;
+        }
+        else
+        {
+            // Initialize Dynamo client
+            var dynamoDbConfig = new AmazonDynamoDBConfig
+            {
+                ServiceURL = config.awsUrl,
+                UseHttp = false,
+                DisableLogging = false,
+                Timeout = TimeSpan.FromSeconds(60),
+                MaxErrorRetry = 5
+            };
+            dynamoDbClient = new AmazonDynamoDBClient(config.awsKey, config.awsSecret, dynamoDbConfig);
+        }
     }
 
-    public async Task<object> StoreFile(IFormFile file)
+    public async Task<StoreFileResponse> StoreFile(IFormFile file)
     {
+        var response = new StoreFileResponse();
         try
         {
             ValidateFile(file);
@@ -89,20 +104,18 @@ public class FileStorageService : IFileStorageService
             }
 
             string objectKey = await CompleteUpload(key, uploadId, partETags);
-            object metadata = await PutMetadata(key, sha256, file);
+            var metadata = await PutMetadata(key, sha256, file);
 
-            return new {
-                Message = "File store successfully",
-                objectKey,
-                metadata
-            };
+            response.Message = "File store successfully";
+            response.ObjectKey = objectKey;
+            response.Metadata = metadata;
+            return response;
         }
         catch (Exception ex)
         {
-            return new {
-                Message = "File store failed",
-                Error = ex.Message
-            };
+            response.Message = "File store failed";
+            response.Error = ex.Message;
+            return response;
         }
     }
 
@@ -171,7 +184,7 @@ public class FileStorageService : IFileStorageService
     /**
      * Write hash to DynamoDB
      */
-    private async Task<object> PutMetadata(string key, SHA256 sha256, IFormFile file)
+    private async Task<Metadata> PutMetadata(string key, SHA256 sha256, IFormFile file)
     {
         try
         {
@@ -186,17 +199,20 @@ public class FileStorageService : IFileStorageService
                     { "ContentType", new AttributeValue { S = file.ContentType } },
                     { "Size", new AttributeValue { N = file.Length.ToString() } },
                     { "Sha256", new AttributeValue { S = fileHash } },
+                    { "BucketName", new AttributeValue { S = bucketName } },
                     { "UploadedAt", new AttributeValue { S = now } }
                 }
             };
             await dynamoDbClient.PutItemAsync(putItemRequest);
 
-            return new {
+            return new Metadata
+            {
                 Filename = file.FileName,
                 ContentType = file.ContentType,
-                Size = file.Length.ToString(),
+                Size = file.Length,
                 Sha256 = fileHash,
-                UploadedAt = now,
+                BucketName = bucketName,
+                UploadedAt = now
             };
         }
         catch (Exception dbEx)
@@ -225,4 +241,22 @@ public class FileStorageService : IFileStorageService
 
         return BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();
     }
+}
+
+public class StoreFileResponse
+{
+    public string? Message { get; set; }
+    public string? ObjectKey { get; set; }
+    public Metadata? Metadata { get; set; }
+    public string? Error {get; set;}
+}
+
+public class Metadata
+{
+    public string? Filename { get; set; }
+    public string? ContentType { get; set; }
+    public long? Size { get; set; }
+    public string? Sha256 { get; set; }
+    public string? BucketName { get; set; }
+    public string? UploadedAt { get; set; }
 }

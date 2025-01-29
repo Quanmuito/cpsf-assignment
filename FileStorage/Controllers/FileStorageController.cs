@@ -7,11 +7,9 @@ namespace FileStorage.Controllers;
 [Route("api/[controller]")]
 public class FileStorageController : ControllerBase
 {
-    private readonly ILogger<FileStorageController> logger;
     private readonly IFileStorageService fileStorageService;
-    public FileStorageController(ILogger<FileStorageController> _logger, IFileStorageService _fileStorageService)
+    public FileStorageController(IFileStorageService _fileStorageService)
     {
-        logger = _logger;
         fileStorageService = _fileStorageService;
     }
 
@@ -25,7 +23,6 @@ public class FileStorageController : ControllerBase
             Environment.GetEnvironmentVariable("AWS_ENDPOINT_URL") ?? "",
             Environment.GetEnvironmentVariable("FileS_AWS__ServiceURL") ?? "",
         ];
-        logger.LogError("An internal server error occurred.");
         return env;
     }
 
@@ -41,7 +38,7 @@ public class FileStorageController : ControllerBase
 
         try
         {
-            var uploadedFiles = new List<object>();
+            var uploadedFiles = new List<StoreFileResponse>();
 
             foreach (var file in files)
             {
