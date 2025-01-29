@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.Features;
+using FileStorage.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,9 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = 2147483648;
 });
+
+// Register your custom service
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 
 // Add logging services (default setup)
 builder.Logging.ClearProviders();
