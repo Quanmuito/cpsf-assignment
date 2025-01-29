@@ -25,6 +25,8 @@ public class FileStorageService : IFileStorageService
         }
         bucketName = config.bucketName;
         tableName = config.tableName;
+        minSize = config.minSize;
+        maxSize = config.maxSize;
 
         // Initialize S3 client
         var amazonS3Config = new AmazonS3Config
@@ -54,10 +56,7 @@ public class FileStorageService : IFileStorageService
     {
         try
         {
-            if (!ValidateFile(file))
-                throw new Exception(
-                    $"File size should be between {minSize / 1024.0}KB and {maxSize / Math.Pow(1024.0, 3.0)}GB. File name: {file.FileName}"
-                );
+            ValidateFile(file);
 
             // Create an unique key for the file
             string fileName = HttpUtility.UrlEncode(file.FileName);
@@ -107,9 +106,12 @@ public class FileStorageService : IFileStorageService
         }
     }
 
-    private bool ValidateFile(IFormFile file)
+    private void ValidateFile(IFormFile file)
     {
-        return file.Length < minSize || file.Length > maxSize;
+        if (file.Length < minSize || file.Length > maxSize)
+            throw new Exception(
+                $"File size should be between {minSize / 1024.0}KB and {maxSize / Math.Pow(1024.0, 3.0)}GB. File name: {file.FileName}"
+            );
     }
 
     /**
@@ -187,7 +189,7 @@ public class FileStorageService : IFileStorageService
                     { "UploadedAt", new AttributeValue { S = now } }
                 }
             };
-            var putItemResponse = await dynamoDbClient.PutItemAsync(putItemRequest);
+            await dynamoDbClient.PutItemAsync(putItemRequest);
 
             return new {
                 Filename = file.FileName,
