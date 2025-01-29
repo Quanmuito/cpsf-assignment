@@ -76,7 +76,7 @@ public class FileStorageController : ControllerBase
         {
             var bucketName = config.bucketName;
             var uploadedFiles = new List<string>();
-            var hashes = new List<string>();
+            var metadata = new List<Dictionary<string, AttributeValue>>();
 
             foreach (var file in files)
             {
@@ -162,16 +162,17 @@ public class FileStorageController : ControllerBase
                     var putItemRequest = new PutItemRequest
                     {
                         TableName = config.tableName,
-                        ReturnValues = "ALL_OLD",
                         Item = new Dictionary<string, AttributeValue>
                         {
-                            { "Filename", new AttributeValue { S = fileName } },
+                            { "Filename", new AttributeValue { S = file.FileName } },
+                            { "ContentType", new AttributeValue { S = file.ContentType } },
+                            { "Size", new AttributeValue { N = file.Length.ToString() } },
                             { "Sha256", new AttributeValue { S = fileHash } },
                             { "UploadedAt", new AttributeValue { S = DateTime.UtcNow.ToString("o") } }
                         }
                     };
                     var putItemResponse = await dynamoDbClient.PutItemAsync(putItemRequest);
-                    hashes.Add(fileHash);
+                    metadata.Add(putItemRequest.Item);
                 }
                 catch (Exception dbEx)
                 {
@@ -191,7 +192,7 @@ public class FileStorageController : ControllerBase
                 message = "File uploaded successfully",
                 bucketName,
                 uploadedFiles,
-                hashes
+                metadata
             };
             return Ok(response);
         }
