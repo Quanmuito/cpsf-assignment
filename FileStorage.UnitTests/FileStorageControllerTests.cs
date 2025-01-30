@@ -48,7 +48,7 @@ public class FileStorageControllerTests
         var mockResponse = new StoreFileResponse
         {
             Message = "File store successfully",
-            ObjectKey = "text.txt-3f5b8c96-7d71-4c41-98d4-8762f34729a5",
+            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt",
             Metadata = new Metadata
             {
                 Filename = "text.txt",

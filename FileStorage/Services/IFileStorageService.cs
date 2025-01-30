@@ -3,6 +3,7 @@ namespace FileStorage.Services;
 public interface IFileStorageService
 {
     public Task<StoreFileResponse> StoreFile(IFormFile file);
+    public Task<Stream> DownloadFile(string key);
 }
 
 public class StoreFileResponse

@@ -4,6 +4,7 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using System.Web;
 using System.Security.Cryptography;
+using System.Net;
 
 namespace FileStorage.Services;
 
@@ -76,23 +77,24 @@ public class FileStorageService : IFileStorageService
             // Create an unique key for the file
             string fileName = HttpUtility.UrlEncode(file.FileName);
             string uid = Guid.NewGuid().ToString();
-            string key = $"{fileName}-{uid}";
+            string key = $"{uid}-{fileName}";
 
             // Start uploading using multipart upload.
             string uploadId = await GetUploadId(key);
             int partNumber = 1;
             var partETags = new List<PartETag>();
-            byte[] buffer = new byte[5 * 1024 * 1024]; // 5MB buffer
 
             using SHA256 sha256 = SHA256.Create(); // Create the SHA-256 object
             using (var fileStream = file.OpenReadStream()) // Start streaming file content
             {
                 int bytesRead;
+                byte[] buffer = new byte[5 * 1024 * 1024]; // 5MB buffer
+                // Read data by chunks and write to buffer
                 while ((bytesRead = await fileStream.ReadAsync(buffer)) > 0)
                 {
-                    // Handle upload data stream
-                    using var memoryStream = new MemoryStream(buffer, 0, bytesRead);
-                    var partETag = await UploadPart(key, uploadId, partNumber, memoryStream);
+                    // Read chunk of data from buffer to upload
+                    using var stream = new MemoryStream(buffer, 0, bytesRead);
+                    var partETag = await UploadPart(key, uploadId, partNumber, stream);
                     partETags.Add(partETag);
 
                     // Update the SHA-256 hash
@@ -102,6 +104,7 @@ public class FileStorageService : IFileStorageService
                 }
             }
 
+            // Complete upload and put record to DynamoDB
             string objectKey = await CompleteUpload(key, uploadId, partETags);
             var metadata = await PutMetadata(key, sha256, file);
 
@@ -118,6 +121,49 @@ public class FileStorageService : IFileStorageService
         }
     }
 
+    public async Task<Stream> DownloadFile(string key)
+    {
+        int attempt = 0;
+
+        while (attempt < 3)
+        {
+            try
+            {
+                int chunkSize = 5 * 1024 * 1024; // 5MB chunks
+                long start = 0;
+                var outputStream = new MemoryStream();
+
+                while (true)
+                {
+                    // Request a specific byte range from S3
+                    using (var responseStream = await GetObject(key, start, chunkSize))
+                    {
+                        await responseStream.CopyToAsync(outputStream);
+                    }
+
+                    start += chunkSize; // Move to the next chunk
+
+                    // Stop if the last chunk was smaller than chunkSize (end of file)
+                    if (outputStream.Length < chunkSize)
+                        break;
+                }
+                outputStream.Position = 0; // Reset stream position before returning
+                return outputStream;
+            }
+            catch (AmazonS3Exception s3Ex) when (s3Ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                attempt++;
+                await Task.Delay(TimeSpan.FromSeconds(3));
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error downloading file: {ex.Message}", ex);
+            }
+        }
+
+        throw new Exception("Max retry attempts exceeded.");
+    }
+
     private void ValidateFile(IFormFile file)
     {
         if (file.Length < minSize || file.Length > maxSize)
@@ -128,7 +174,7 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Initialize a multipart upload
-     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TInitiateMultipartUploadRequest.html
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/MS3InitiateMultipartUploadAsyncInitiateMultipartUploadRequestCancellationToken.html
      */
     private async Task<string> GetUploadId(string key)
     {
@@ -144,9 +190,9 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Upload each part
-     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TUploadPartRequest.html
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/MS3UploadPartAsyncUploadPartRequestCancellationToken.html
      */
-    private async Task<PartETag> UploadPart(string key, string id, int partNumber, MemoryStream stream)
+    private async Task<PartETag> UploadPart(string key, string id, int partNumber, Stream stream)
     {
         var uploadPartRequest = new UploadPartRequest
         {
@@ -167,7 +213,7 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Complete the multipart upload
-     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TCompleteMultipartUploadRequest.html
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/MS3CompleteMultipartUploadAsyncCompleteMultipartUploadRequestCancellationToken.html
      */
     private async Task<string> CompleteUpload(string key, string id, List<PartETag> parts)
     {
@@ -185,7 +231,7 @@ public class FileStorageService : IFileStorageService
 
     /**
      * Delete an object from S3
-     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/TDeletedObject.html
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/MS3DeleteObjectAsyncDeleteObjectRequestCancellationToken.html
      */
     private async void DeleteObject(string key)
     {
@@ -199,8 +245,25 @@ public class FileStorageService : IFileStorageService
     }
 
     /**
+     * Get object from bucket
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/S3/MS3GetObjectAsyncGetObjectRequestCancellationToken.html
+     */
+    private async Task<Stream> GetObject(string key, long start, int chunkSize)
+    {
+        var getObjectRequest = new GetObjectRequest
+        {
+            BucketName = bucketName,
+            Key = key,
+            ByteRange = new ByteRange(start, start + chunkSize - 1) // 0-based indexing
+        };
+
+        GetObjectResponse getObjectResponse = await amazonS3Client.GetObjectAsync(getObjectRequest);
+        return getObjectResponse.ResponseStream;
+    }
+
+    /**
      * Write hash to DynamoDB
-     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBPutItemPutItemRequest.html
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBPutItemAsyncPutItemRequestCancellationToken.html
      */
     private async Task<Metadata> PutMetadata(string key, SHA256 sha256, IFormFile file)
     {
@@ -233,7 +296,7 @@ public class FileStorageService : IFileStorageService
                 UploadedAt = now
             };
         }
-        catch (Exception dbEx)
+        catch (AmazonDynamoDBException dbEx)
         {
             DeleteObject(key);
             throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}");

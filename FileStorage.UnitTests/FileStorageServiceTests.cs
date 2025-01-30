@@ -46,7 +46,7 @@ public class FileStorageServiceTests
         var expectedResult = new StoreFileResponse
         {
             Message = "File store successfully",
-            ObjectKey = "text.txt-3f5b8c96-7d71-4c41-98d4-8762f34729a5",
+            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt",
             Metadata = new Metadata {
                 Filename = "text.txt",
                 ContentType = "text/plain",
@@ -106,7 +106,7 @@ public class FileStorageServiceTests
     public async Task Store_File_Upload_Success_Put_Fail()
     {
 
-        SetUpAWSMockResponse("text.txt-3f5b8c96-7d71-4c41-98d4-8762f34729a5", true);
+        SetUpAWSMockResponse("3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt", true);
 
         var expectedResult = new StoreFileResponse
         {

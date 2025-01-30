@@ -13,18 +13,18 @@ public class FileStorageController : ControllerBase
         fileStorageService = _fileStorageService;
     }
 
-    [HttpGet]
-    public string[] Get()
-    {
-        string[] env = [
-            Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") ?? "",
-            Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY") ?? "",
-            Environment.GetEnvironmentVariable("AWS_REGION") ?? "",
-            Environment.GetEnvironmentVariable("AWS_ENDPOINT_URL") ?? "",
-            Environment.GetEnvironmentVariable("FileS_AWS__ServiceURL") ?? "",
-        ];
-        return env;
-    }
+    // [HttpGet]
+    // public string[] Get()
+    // {
+    //     string[] env = [
+    //         Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") ?? "",
+    //         Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY") ?? "",
+    //         Environment.GetEnvironmentVariable("AWS_REGION") ?? "",
+    //         Environment.GetEnvironmentVariable("AWS_ENDPOINT_URL") ?? "",
+    //         Environment.GetEnvironmentVariable("FileS_AWS__ServiceURL") ?? "",
+    //     ];
+    //     return env;
+    // }
 
     [HttpPost]
     public async Task<IActionResult> Upload()
@@ -50,7 +50,33 @@ public class FileStorageController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Something went wrong: {ex.Message}");
+            return StatusCode(500, $"Something went wrong: {ex.Message}.");
+        }
+    }
+
+    [HttpGet("{fileName}")]
+    public async Task<IActionResult> Download(string fileName)
+    {
+        if (String.IsNullOrEmpty(fileName))
+        {
+            return BadRequest("No file name found.");
+        }
+
+        try
+        {
+            var file = await fileStorageService.DownloadFile(fileName);
+            if (file == null)
+            {
+                return NotFound("File not found.");
+            }
+
+            // Determine the content type (MIME type). Default for unknown file types
+            string contentType = "application/octet-stream";
+            return File(file, contentType, fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Something went wrong: {ex.Message}.");
         }
     }
 }
