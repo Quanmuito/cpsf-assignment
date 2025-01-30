@@ -35,20 +35,20 @@ sequenceDiagram
 
     #1 User->>API: upload file
     API->>API: validate file size in-between 128KB and 2GB
-    
+
     par
         API->>S3: uploading file to a bucket
         API->>API: calculating SHA-256
         S3-->>API: file uploaded
     end
     API->>DynamoDB: save metadata <file_name, uploaded_at, sha256>
-    DynamoDB-->>API: metadata saved 
+    DynamoDB-->>API: metadata saved
     API-->>User: upload successful
 ```
 
 Pre-existing infrastructure:
 - S3 bucket `s3://storage` for the file storage
-- DynamoDB table `Files` with the `Filename` and `UploadedAt` as the default attribute. Feel free to change the schema. 
+- DynamoDB table `Files` with the `Filename` and `UploadedAt` as the default attribute. Feel free to change the schema.
 You can configure the table attributes in `init-scripts/init.sh` file then run `make reset` to apply the changes.
 - ASP.NET Core Web API project with .NET SDK 8.0. You can find it in `FileStorage` folder, please use `FileStorage/Controllers/FileStorageController.cs` as a starting point,
 feel free to change anything you need in the solution
@@ -121,3 +121,117 @@ Please consider the following points:
 
 ## Submission
 - You can submit your solution as a zip file or a link to a public repository to a hiring manager email
+
+# Solution
+
+## Run the application
+
+- Clone the repository or unzip the file into a folder.
+- Open a terminal at the directory and run command below to start up
+```bash
+make up
+```
+- If you don't have `make` installed, run
+```bash
+docker compose up
+```
+- Run check to test everything is ready
+```sh
+make check
+```
+
+## Unit test
+
+- Navigate to FileStorage.UnitTests folder
+```bash
+cd FileStorage.UnitTests
+```
+- Run command
+```bash
+dotnet test
+```
+- You should see something like this
+```
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 10 s - FileStorage.UnitTests.dll (net8.0)
+```
+
+## Endpoints documentation
+
+The local domain should be `http://localhost:8080`.
+You can make multiple HTTP requests using terminal with curl or a third-party platform (example: [Postman](https://www.postman.com/)).
+
+```
+POST  |  /api/FileStorage/upload  |  Upload a file to S3 and save metadata to DynamoDB
+
+REQUEST SCHEMA
+Note:
+- File size should range from 128KB to 2GB.
+- You can upload multiple files at once, but the total size should not exceed 2BG.
+
+RESPONSE SCHEMA
+[
+    {
+        "message": string,
+        "objectKey": string,
+        "metadata": {
+            "filename": string,
+            "contentType": string,
+            "size": uint,
+            "sha256": string,
+            "bucketName": string,
+            "uploadedAt": datetime
+        },
+        "error": string
+    }
+]
+```
+---
+```
+GET  |  /api/FileStorage/download/{fileName}  |  Download a file from S3
+
+RESPONSE SCHEMA
+Binary file data
+```
+---
+```
+GET  |  /api/FileStorage/list |  List all file records in DynamoDB
+
+RESPONSE SCHEMA
+[
+    {
+        "Filename": string,
+        "BucketName": string,
+        "ContentType": string,
+        "Size": string,
+        "Sha256": string,
+        "UploadedAt": datetime
+    }
+]
+```
+---
+```
+GET  |  /api/FileStorage/get/{sha256} |  Get specific record by it's sha256 value
+
+RESPONSE SCHEMA
+{
+    "Filename": string,
+    "BucketName": string,
+    "ContentType": string,
+    "Size": string,
+    "Sha256": string,
+    "UploadedAt": datetime
+}
+```
+---
+##### HTTP Response Status Codes used in this application
+
+| Code  | Title                      | Description                              |
+| ----- | -------------------------- | ---------------------------------------- |
+| `200` | `OK`                       | When a request was successfully processed (e.g. when using `GET`, `PATCH`, `PUT` or `DELETE`). |
+| `400` | `Bad request`              | When the request could not be understood (e.g. fail to validate or missing data). |
+| `404` | `Not found`                | When URL is not found. |
+| `413` | `Request Entity Too Large` | When your upload file is too big (e.g >2GB). |
+| `500` | `Internal server error`    | When an internal error has happened (e.g. when trying to add records in the database fails). |

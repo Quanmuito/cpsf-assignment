@@ -216,7 +216,7 @@ public class FileStorageServiceTests
         var attribute = new Dictionary<string, AttributeValue>
         {
             { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
-            { "BucketName", new AttributeValue { S = _config.tableName } },
+            { "BucketName", new AttributeValue { S = _config.bucketName } },
             { "ContentType", new AttributeValue { S = "application/pdf" } },
             { "Size", new AttributeValue { N = "161450" } },
             { "Sha256", new AttributeValue { S = "8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55" } },
@@ -258,7 +258,7 @@ public class FileStorageServiceTests
         var attribute = new Dictionary<string, AttributeValue>
         {
             { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
-            { "BucketName", new AttributeValue { S = _config.tableName } },
+            { "BucketName", new AttributeValue { S = _config.bucketName } },
             { "ContentType", new AttributeValue { S = "application/pdf" } },
             { "Size", new AttributeValue { N = "161450" } },
             { "Sha256", new AttributeValue { S = sha256 } },
