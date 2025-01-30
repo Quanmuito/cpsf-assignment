@@ -125,7 +125,7 @@ public class FileStorageService : IFileStorageService
     {
         int attempt = 0;
 
-        while (attempt < 3)
+        while (attempt < 5)
         {
             try
             {
@@ -153,7 +153,7 @@ public class FileStorageService : IFileStorageService
             catch (AmazonS3Exception s3Ex) when (s3Ex.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
                 attempt++;
-                await Task.Delay(TimeSpan.FromSeconds(3));
+                await Task.Delay(TimeSpan.FromSeconds(2));
             }
             catch (Exception ex)
             {

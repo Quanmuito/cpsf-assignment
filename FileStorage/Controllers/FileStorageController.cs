@@ -32,9 +32,7 @@ public class FileStorageController : ControllerBase
         IFormFileCollection? files = Request.Form.Files;
 
         if (!files.Any())
-        {
             return BadRequest("No files uploaded.");
-        }
 
         try
         {
@@ -66,13 +64,10 @@ public class FileStorageController : ControllerBase
         {
             var file = await fileStorageService.DownloadFile(fileName);
             if (file == null)
-            {
                 return NotFound("File not found.");
-            }
 
-            // Determine the content type (MIME type). Default for unknown file types
-            string contentType = "application/octet-stream";
-            return File(file, contentType, fileName);
+            // Content type (MIME type) default for unknown file types
+            return File(file, "application/octet-stream", fileName);
         }
         catch (Exception ex)
         {

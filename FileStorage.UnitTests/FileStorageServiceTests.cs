@@ -184,7 +184,7 @@ public class FileStorageServiceTests
                     It.Is<PutItemRequest>(req => true),
                     It.IsAny<CancellationToken>()
                 ))
-            .ThrowsAsync(new Exception("Cannot put to DynamoDB"));
+            .ThrowsAsync(new AmazonDynamoDBException("Cannot put to DynamoDB"));
         }
         else {
             _mockDynamoDbClient

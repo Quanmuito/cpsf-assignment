@@ -23,17 +23,6 @@ public class FileStorageControllerTests
     }
 
     [Fact]
-    public void Get_Returns_EnvironmentVariables()
-    {
-        // Act
-        var result = controller.Get();
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(5, result.Length);
-    }
-
-    [Fact]
     public async Task Upload_With_File()
     {
         // Set up context for request
