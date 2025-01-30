@@ -34,7 +34,6 @@ public class FileStorageControllerTests
             HttpContext = context
         };
 
-        // Mock StoreFile successfully upload
         var mockResponse = new StoreFileResponse
         {
             Message = "File store successfully",
@@ -58,11 +57,10 @@ public class FileStorageControllerTests
 
         // Assert
         var result = Assert.IsType<OkObjectResult>(response);
-        var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
-
         Assert.Equal(200, result.StatusCode);
 
         // Assert main properties
+        var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
         var firstObject = objectList[0];
         Assert.Equal(mockResponse.Message, firstObject.Message);
         Assert.Equal(mockResponse.ObjectKey, firstObject.ObjectKey);
@@ -109,7 +107,6 @@ public class FileStorageControllerTests
             HttpContext = context
         };
 
-        // Mock StoreFile failed to upload or save metadata to db
         var mockResponse = new StoreFileResponse
         {
             Message = "File store failed.",
@@ -122,11 +119,10 @@ public class FileStorageControllerTests
 
         // Assert
         var result = Assert.IsType<OkObjectResult>(response);
-        var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
-
         Assert.Equal(200, result.StatusCode);
 
         // Assert main properties
+        var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
         var firstObject = objectList[0];
         Assert.Equal(mockResponse.Message, firstObject.Message);
         Assert.Null(firstObject.ObjectKey);
@@ -145,7 +141,6 @@ public class FileStorageControllerTests
             HttpContext = context
         };
 
-        // Mock service throw error (for example: invalid credentials)
         mockFileStorageService.Setup(service => service.StoreFile(It.IsAny<IFormFile>()))
             .ThrowsAsync(new Exception("Invalid AWS credentials."));
 
@@ -155,7 +150,7 @@ public class FileStorageControllerTests
         // Assert
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(500, result.StatusCode);
-        Assert.Contains("Something went wrong:", result.Value.ToString());
+        Assert.Contains("Something went wrong:", result.Value?.ToString());
     }
 
     [Fact]
@@ -233,7 +228,7 @@ public class FileStorageControllerTests
         // Assert
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(500, result.StatusCode);
-        Assert.Contains("Something went wrong", result.Value.ToString());
+        Assert.Contains("Something went wrong", result.Value?.ToString());
     }
 
     [Fact]
@@ -281,7 +276,7 @@ public class FileStorageControllerTests
         // Assert
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(500, result.StatusCode);
-        Assert.Contains("Something went wrong", result.Value.ToString());
+        Assert.Contains("Something went wrong", result.Value?.ToString());
     }
 
     [Fact]
@@ -338,7 +333,7 @@ public class FileStorageControllerTests
         // Assert
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(500, result.StatusCode);
-        Assert.Contains("Something went wrong", result.Value.ToString());
+        Assert.Contains("Something went wrong", result.Value?.ToString());
     }
 
     private FormFile GetMockFile()

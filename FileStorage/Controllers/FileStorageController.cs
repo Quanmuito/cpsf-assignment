@@ -24,7 +24,6 @@ public class FileStorageController : ControllerBase
         try
         {
             var uploadedFiles = new List<StoreFileResponse>();
-
             foreach (var file in files)
             {
                 var result = await fileStorageService.StoreFile(file);
@@ -43,9 +42,7 @@ public class FileStorageController : ControllerBase
     public async Task<IActionResult> Download(string fileName)
     {
         if (String.IsNullOrEmpty(fileName))
-        {
             return BadRequest("No file name found.");
-        }
 
         try
         {
@@ -80,9 +77,7 @@ public class FileStorageController : ControllerBase
     public async Task<IActionResult> Get(string sha256)
     {
         if (String.IsNullOrEmpty(sha256))
-        {
             return BadRequest("No sha256 found.");
-        }
 
         try
         {
@@ -94,5 +89,4 @@ public class FileStorageController : ControllerBase
             return StatusCode(500, $"Something went wrong: {ex.Message}.");
         }
     }
-
 }

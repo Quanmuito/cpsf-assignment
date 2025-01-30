@@ -1,12 +1,12 @@
 using Moq;
 using Xunit;
-using System.Net;
-using System.Text;
-using Microsoft.AspNetCore.Http;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
+using System.Net;
+using System.Text;
+using Microsoft.AspNetCore.Http;
 using FileStorage.Services;
 
 namespace FileStorage.UnitTests;
@@ -216,9 +216,9 @@ public class FileStorageServiceTests
         var attribute = new Dictionary<string, AttributeValue>
         {
             { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
-            { "BucketName", new AttributeValue { S = "storage" } },
+            { "BucketName", new AttributeValue { S = _config.tableName } },
             { "ContentType", new AttributeValue { S = "application/pdf" } },
-            { "Size", new AttributeValue { N = "161450" } }, // Stored as a number
+            { "Size", new AttributeValue { N = "161450" } },
             { "Sha256", new AttributeValue { S = "8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55" } },
             { "UploadedAt", new AttributeValue { S = "2025-01-30T17:02:32.1886791Z" } }
         };
@@ -258,9 +258,9 @@ public class FileStorageServiceTests
         var attribute = new Dictionary<string, AttributeValue>
         {
             { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
-            { "BucketName", new AttributeValue { S = "storage" } },
+            { "BucketName", new AttributeValue { S = _config.tableName } },
             { "ContentType", new AttributeValue { S = "application/pdf" } },
-            { "Size", new AttributeValue { N = "161450" } }, // Stored as a number
+            { "Size", new AttributeValue { N = "161450" } },
             { "Sha256", new AttributeValue { S = sha256 } },
             { "UploadedAt", new AttributeValue { S = "2025-01-30T17:02:32.1886791Z" } }
         };

@@ -2,9 +2,9 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
+using System.Net;
 using System.Web;
 using System.Security.Cryptography;
-using System.Net;
 
 namespace FileStorage.Services;
 
@@ -21,9 +21,8 @@ public class FileStorageService : IFileStorageService
     {
         var config = _config ?? new Config();
         if (!config.Validate())
-        {
             throw new Exception("Invalid AWS credentials.");
-        }
+
         bucketName = config.bucketName;
         tableName = config.tableName;
         minSize = config.minSize;
@@ -103,6 +102,7 @@ public class FileStorageService : IFileStorageService
                     // Update the SHA-256 hash
                     sha256.TransformBlock(buffer, 0, bytesRead, null, 0);
 
+                    // Move to next chunk
                     partNumber++;
                 }
             }
@@ -119,6 +119,7 @@ public class FileStorageService : IFileStorageService
             }
             catch (AmazonDynamoDBException dbEx)
             {
+                // Delete file from S3 if DynamoDB operation fails
                 DeleteObject(objectKey);
                 response.ObjectKey = null;
                 throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}.");
@@ -140,8 +141,8 @@ public class FileStorageService : IFileStorageService
      */
     public async Task<Stream> DownloadFile(string fileName)
     {
+        // Retry 5 times with 2 seconds delay
         int attempt = 0;
-
         while (attempt < 5)
         {
             try
@@ -187,9 +188,7 @@ public class FileStorageService : IFileStorageService
     public async Task<List<Dictionary<string, string>>> ListFile()
     {
         var items = await GetAllRecords();
-
         var result = items.Select(TransfromData).ToList();
-
         return result;
     }
 
@@ -273,7 +272,6 @@ public class FileStorageService : IFileStorageService
      */
     private async void DeleteObject(string key)
     {
-        // Delete file from S3 if DynamoDB operation fails
         var request = new DeleteObjectRequest
         {
             BucketName = bucketName,
