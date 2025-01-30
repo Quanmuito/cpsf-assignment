@@ -13,20 +13,7 @@ public class FileStorageController : ControllerBase
         fileStorageService = _fileStorageService;
     }
 
-    // [HttpGet]
-    // public string[] Get()
-    // {
-    //     string[] env = [
-    //         Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") ?? "",
-    //         Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY") ?? "",
-    //         Environment.GetEnvironmentVariable("AWS_REGION") ?? "",
-    //         Environment.GetEnvironmentVariable("AWS_ENDPOINT_URL") ?? "",
-    //         Environment.GetEnvironmentVariable("FileS_AWS__ServiceURL") ?? "",
-    //     ];
-    //     return env;
-    // }
-
-    [HttpPost]
+    [HttpPost("upload")]
     public async Task<IActionResult> Upload()
     {
         IFormFileCollection? files = Request.Form.Files;
@@ -52,7 +39,7 @@ public class FileStorageController : ControllerBase
         }
     }
 
-    [HttpGet("{fileName}")]
+    [HttpGet("download/{fileName}")]
     public async Task<IActionResult> Download(string fileName)
     {
         if (String.IsNullOrEmpty(fileName))
@@ -74,4 +61,25 @@ public class FileStorageController : ControllerBase
             return StatusCode(500, $"Something went wrong: {ex.Message}.");
         }
     }
+
+    [HttpGet("list")]
+    public async Task<IActionResult> List()
+    {
+        try
+        {
+            var list = await fileStorageService.ListFile();
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Something went wrong: {ex.Message}.");
+        }
+    }
+
+    [HttpGet("{sha256}")]
+    public async Task<IActionResult> Get(string sha256)
+    {
+        return Ok(sha256);
+    }
+
 }

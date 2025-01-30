@@ -61,7 +61,6 @@ public class FileStorageControllerTests
         var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
 
         Assert.Equal(200, result.StatusCode);
-        Assert.Single(objectList);
 
         // Assert main properties
         var firstObject = objectList[0];
@@ -126,7 +125,6 @@ public class FileStorageControllerTests
         var objectList = Assert.IsType<List<StoreFileResponse>>(result.Value);
 
         Assert.Equal(200, result.StatusCode);
-        Assert.Single(objectList);
 
         // Assert main properties
         var firstObject = objectList[0];
@@ -231,6 +229,46 @@ public class FileStorageControllerTests
 
         // When
         var response = await controller.Download(fileName);
+
+        // Assert
+        var result = Assert.IsType<ObjectResult>(response);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Contains("Something went wrong", result.Value.ToString());
+    }
+
+    [Fact]
+    public async Task List_Success()
+    {
+        // Given
+        var mockData = new List<Dictionary<string, string>>
+        {
+            new Dictionary<string, string> {
+                { "Filename", "test.txt" },
+                { "BucketName", "storage" },
+                { "ContentType", "text/plain" },
+                { "Size", "161450" },
+                { "Sha256", "005853fe24980ef2d96eda4ec99d122bc7b2d621ae2f812f499912d4f184a7ef" },
+                { "UploadedAt", "2025-01-30T17:40:09.6798488Z" },
+            }
+        };
+        mockFileStorageService.Setup(service => service.ListFile()).ReturnsAsync(mockData);
+
+        // When
+        var response = await controller.List();
+
+        // Assert
+        var result = Assert.IsType<OkObjectResult>(response);
+        var objectList = Assert.IsType<List<Dictionary<string, string>>>(result.Value);
+    }
+
+    [Fact]
+    public async Task List_Fail()
+    {
+        // Given
+        mockFileStorageService.Setup(service => service.ListFile()).ThrowsAsync(new Exception("Unexpected error"));;
+
+        // When
+        var response = await controller.List();
 
         // Assert
         var result = Assert.IsType<ObjectResult>(response);

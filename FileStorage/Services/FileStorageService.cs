@@ -5,6 +5,7 @@ using Amazon.DynamoDBv2.Model;
 using System.Web;
 using System.Security.Cryptography;
 using System.Net;
+using System.Text.Json;
 
 namespace FileStorage.Services;
 
@@ -67,6 +68,9 @@ public class FileStorageService : IFileStorageService
         }
     }
 
+    /**
+     * Handle store file
+     */
     public async Task<StoreFileResponse> StoreFile(IFormFile file)
     {
         var response = new StoreFileResponse();
@@ -104,23 +108,37 @@ public class FileStorageService : IFileStorageService
                 }
             }
 
-            // Complete upload and put record to DynamoDB
+            // Complete upload to S3
             string objectKey = await CompleteUpload(key, uploadId, partETags);
-            var metadata = await PutMetadata(key, sha256, file);
+            response.ObjectKey = objectKey;
+
+            // Put metadata to DynamoDb
+            try
+            {
+                var metadata = await PutMetadata(sha256, file);
+                response.Metadata = metadata;
+            }
+            catch (AmazonDynamoDBException dbEx)
+            {
+                DeleteObject(objectKey);
+                response.ObjectKey = null;
+                throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}.");
+            }
 
             response.Message = "File store successfully.";
-            response.ObjectKey = objectKey;
-            response.Metadata = metadata;
             return response;
         }
         catch (Exception ex)
         {
-            response.Message = "File store failed.";
             response.Error = ex.Message;
+            response.Message = "File store failed.";
             return response;
         }
     }
 
+    /**
+     * Handle download file
+     */
     public async Task<Stream> DownloadFile(string fileName)
     {
         int attempt = 0;
@@ -164,6 +182,21 @@ public class FileStorageService : IFileStorageService
         throw new Exception($"Max retry attempts exceeded when download file: {fileName}.");
     }
 
+    /**
+     * Handle list files
+     */
+    public async Task<List<Dictionary<string, string>>> ListFile()
+    {
+        var items = await GetAllRecords();
+
+        var result = items.Select(item => item.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.S ?? kvp.Value.N // Extract string or number
+        )).ToList();
+
+        return result;
+    }
+
     private void ValidateFile(IFormFile file)
     {
         if (file.Length < minSize || file.Length > maxSize)
@@ -178,14 +211,14 @@ public class FileStorageService : IFileStorageService
      */
     private async Task<string> GetUploadId(string key)
     {
-        var initiateRequest = new InitiateMultipartUploadRequest
+        var request = new InitiateMultipartUploadRequest
         {
             BucketName = bucketName,
             Key = key
         };
-        var initiateResponse = await amazonS3Client.InitiateMultipartUploadAsync(initiateRequest);
+        var response = await amazonS3Client.InitiateMultipartUploadAsync(request);
 
-        return initiateResponse.UploadId;
+        return response.UploadId;
     }
 
     /**
@@ -194,7 +227,7 @@ public class FileStorageService : IFileStorageService
      */
     private async Task<PartETag> UploadPart(string key, string id, int partNumber, Stream stream)
     {
-        var uploadPartRequest = new UploadPartRequest
+        var request = new UploadPartRequest
         {
             BucketName = bucketName,
             Key = key,
@@ -202,12 +235,12 @@ public class FileStorageService : IFileStorageService
             PartNumber = partNumber,
             InputStream = stream
         };
-        var uploadPartResponse = await amazonS3Client.UploadPartAsync(uploadPartRequest);
+        var response = await amazonS3Client.UploadPartAsync(request);
 
         return new PartETag
         {
-            PartNumber = uploadPartResponse.PartNumber,
-            ETag = uploadPartResponse.ETag
+            PartNumber = response.PartNumber,
+            ETag = response.ETag
         };
     }
 
@@ -217,16 +250,16 @@ public class FileStorageService : IFileStorageService
      */
     private async Task<string> CompleteUpload(string key, string id, List<PartETag> parts)
     {
-        var completeRequest = new CompleteMultipartUploadRequest
+        var request = new CompleteMultipartUploadRequest
         {
             BucketName = bucketName,
             Key = key,
             UploadId = id,
             PartETags = parts
         };
-        var completeResponse = await amazonS3Client.CompleteMultipartUploadAsync(completeRequest);
+        var response = await amazonS3Client.CompleteMultipartUploadAsync(request);
 
-        return completeResponse.Key;
+        return response.Key;
     }
 
     /**
@@ -236,12 +269,12 @@ public class FileStorageService : IFileStorageService
     private async void DeleteObject(string key)
     {
         // Delete file from S3 if DynamoDB operation fails
-        var deleteRequest = new DeleteObjectRequest
+        var request = new DeleteObjectRequest
         {
             BucketName = bucketName,
             Key = key
         };
-        await amazonS3Client.DeleteObjectAsync(deleteRequest);
+        await amazonS3Client.DeleteObjectAsync(request);
     }
 
     /**
@@ -250,57 +283,64 @@ public class FileStorageService : IFileStorageService
      */
     private async Task<Stream> GetObject(string key, long start, int chunkSize)
     {
-        var getObjectRequest = new GetObjectRequest
+        var request = new GetObjectRequest
         {
             BucketName = bucketName,
             Key = key,
             ByteRange = new ByteRange(start, start + chunkSize - 1) // 0-based indexing
         };
 
-        GetObjectResponse getObjectResponse = await amazonS3Client.GetObjectAsync(getObjectRequest);
-        return getObjectResponse.ResponseStream;
+        GetObjectResponse response = await amazonS3Client.GetObjectAsync(request);
+        return response.ResponseStream;
     }
 
     /**
      * Write hash to DynamoDB
      * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBPutItemAsyncPutItemRequestCancellationToken.html
      */
-    private async Task<Metadata> PutMetadata(string key, SHA256 sha256, IFormFile file)
+    private async Task<Metadata> PutMetadata(SHA256 sha256, IFormFile file)
     {
-        try
+        var fileHash = GetFileHash(sha256, file.FileName);
+        string now = DateTime.UtcNow.ToString("o");
+        var request = new PutItemRequest
         {
-            var fileHash = GetFileHash(sha256, file.FileName);
-            string now = DateTime.UtcNow.ToString("o");
-            var putItemRequest = new PutItemRequest
+            TableName = tableName,
+            Item = new Dictionary<string, AttributeValue>
             {
-                TableName = tableName,
-                Item = new Dictionary<string, AttributeValue>
-                {
-                    { "Filename", new AttributeValue { S = file.FileName } },
-                    { "ContentType", new AttributeValue { S = file.ContentType } },
-                    { "Size", new AttributeValue { N = file.Length.ToString() } },
-                    { "Sha256", new AttributeValue { S = fileHash } },
-                    { "BucketName", new AttributeValue { S = bucketName } },
-                    { "UploadedAt", new AttributeValue { S = now } }
-                }
-            };
-            await dynamoDbClient.PutItemAsync(putItemRequest);
+                { "Filename", new AttributeValue { S = file.FileName } },
+                { "ContentType", new AttributeValue { S = file.ContentType } },
+                { "Size", new AttributeValue { N = file.Length.ToString() } },
+                { "Sha256", new AttributeValue { S = fileHash } },
+                { "BucketName", new AttributeValue { S = bucketName } },
+                { "UploadedAt", new AttributeValue { S = now } }
+            }
+        };
+        await dynamoDbClient.PutItemAsync(request);
 
-            return new Metadata
-            {
-                Filename = file.FileName,
-                ContentType = file.ContentType,
-                Size = file.Length,
-                Sha256 = fileHash,
-                BucketName = bucketName,
-                UploadedAt = now
-            };
-        }
-        catch (AmazonDynamoDBException dbEx)
+        return new Metadata
         {
-            DeleteObject(key);
-            throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}.");
-        }
+            Filename = file.FileName,
+            ContentType = file.ContentType,
+            Size = file.Length,
+            Sha256 = fileHash,
+            BucketName = bucketName,
+            UploadedAt = now
+        };
+    }
+
+    /**
+     * Get all records
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBScanAsyncScanRequestCancellationToken.html
+     */
+    private async Task<List<Dictionary<string, AttributeValue>>> GetAllRecords()
+    {
+        var request = new ScanRequest
+        {
+            TableName = tableName,
+        };
+        var response = await dynamoDbClient.ScanAsync(request);
+
+        return response.Items;
     }
 
     /**

@@ -209,6 +209,49 @@ public class FileStorageServiceTests
         Assert.Equal($"Error downloading file: {fileName}. Error: Unexpected Error.", exception.Message);
     }
 
+    [Fact]
+    public async Task List_File_Sucess()
+    {
+        // Given
+        var attribute = new Dictionary<string, AttributeValue>
+        {
+            { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
+            { "BucketName", new AttributeValue { S = "storage" } },
+            { "ContentType", new AttributeValue { S = "application/pdf" } },
+            { "Size", new AttributeValue { N = "161450" } }, // Stored as a number
+            { "Sha256", new AttributeValue { S = "8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55" } },
+            { "UploadedAt", new AttributeValue { S = "2025-01-30T17:02:32.1886791Z" } }
+        };
+        var items = new List<Dictionary<string, AttributeValue>> { attribute };
+
+        var scanResponse = new ScanResponse
+        {
+            Items = items
+        };
+
+        _mockDynamoDbClient
+            .Setup(dynamoDb => dynamoDb.ScanAsync(
+                    It.Is<ScanRequest>(req => true),
+                    It.IsAny<CancellationToken>()
+                ))
+            .ReturnsAsync(scanResponse);
+
+        // When
+        var response = await _fileStorageService.ListFile();
+
+        // Then
+        Assert.NotNull(response);
+
+        // Assert specific field values
+        var fileItem = response.First();
+        Assert.Equal("invoice_296709517.pdf", fileItem["Filename"]);
+        Assert.Equal("storage", fileItem["BucketName"]);
+        Assert.Equal("application/pdf", fileItem["ContentType"]);
+        Assert.Equal("161450", fileItem["Size"]);
+        Assert.Equal("8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55", fileItem["Sha256"]);
+        Assert.Equal("2025-01-30T17:02:32.1886791Z", fileItem["UploadedAt"]);
+    }
+
     private void SetUpAWSMockResponseForUpload(string key, bool fail = false)
     {
         // Responses for S3 client

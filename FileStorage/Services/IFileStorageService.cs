@@ -4,6 +4,7 @@ public interface IFileStorageService
 {
     public Task<StoreFileResponse> StoreFile(IFormFile file);
     public Task<Stream> DownloadFile(string key);
+    public Task<List<Dictionary<string, string>>> ListFile();
 }
 
 public class StoreFileResponse
