@@ -108,20 +108,20 @@ public class FileStorageService : IFileStorageService
             string objectKey = await CompleteUpload(key, uploadId, partETags);
             var metadata = await PutMetadata(key, sha256, file);
 
-            response.Message = "File store successfully";
+            response.Message = "File store successfully.";
             response.ObjectKey = objectKey;
             response.Metadata = metadata;
             return response;
         }
         catch (Exception ex)
         {
-            response.Message = "File store failed";
+            response.Message = "File store failed.";
             response.Error = ex.Message;
             return response;
         }
     }
 
-    public async Task<Stream> DownloadFile(string key)
+    public async Task<Stream> DownloadFile(string fileName)
     {
         int attempt = 0;
 
@@ -136,7 +136,7 @@ public class FileStorageService : IFileStorageService
                 while (true)
                 {
                     // Request a specific byte range from S3
-                    using (var responseStream = await GetObject(key, start, chunkSize))
+                    using (var responseStream = await GetObject(fileName, start, chunkSize))
                     {
                         await responseStream.CopyToAsync(outputStream);
                     }
@@ -157,18 +157,18 @@ public class FileStorageService : IFileStorageService
             }
             catch (Exception ex)
             {
-                throw new Exception($"Error downloading file: {ex.Message}", ex);
+                throw new Exception($"Error downloading file: {fileName}. Error: {ex.Message}.", ex);
             }
         }
 
-        throw new Exception("Max retry attempts exceeded.");
+        throw new Exception($"Max retry attempts exceeded when download file: {fileName}.");
     }
 
     private void ValidateFile(IFormFile file)
     {
         if (file.Length < minSize || file.Length > maxSize)
             throw new Exception(
-                $"File size should be between {minSize / 1024.0}KB and {maxSize / Math.Pow(1024.0, 3.0)}GB. File name: {file.FileName}"
+                $"File size should be between {minSize / 1024.0}KB and {maxSize / Math.Pow(1024.0, 3.0)}GB. File name: {file.FileName}."
             );
     }
 
@@ -299,7 +299,7 @@ public class FileStorageService : IFileStorageService
         catch (AmazonDynamoDBException dbEx)
         {
             DeleteObject(key);
-            throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}");
+            throw new Exception($"DynamoDB operation failed. File removed from S3. Error: {dbEx.Message}.");
         }
     }
 
@@ -311,7 +311,7 @@ public class FileStorageService : IFileStorageService
         sha256.TransformFinalBlock([], 0, 0);
         if (sha256.Hash == null)
         {
-            throw new InvalidOperationException($"SHA256 value failed to calculate. File name: {fileName}");
+            throw new InvalidOperationException($"SHA256 value failed to calculate. File name: {fileName}.");
         }
 
         return BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();

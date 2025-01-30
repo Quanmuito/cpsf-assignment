@@ -1,5 +1,6 @@
 using Moq;
 using Xunit;
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
@@ -25,7 +26,7 @@ public class FileStorageControllerTests
     [Fact]
     public async Task Upload_With_File()
     {
-        // Set up context for request
+        // Given
         var context = new DefaultHttpContext();
         context.Request.Form = GetFormCollection();
         controller.ControllerContext = new ControllerContext()
@@ -37,10 +38,10 @@ public class FileStorageControllerTests
         var mockResponse = new StoreFileResponse
         {
             Message = "File store successfully",
-            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt",
+            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt",
             Metadata = new Metadata
             {
-                Filename = "text.txt",
+                Filename = "test.txt",
                 ContentType = "text/plain",
                 Size = 10,
                 Sha256 = "afd4fddfd45c5078d83d6294d1d4df6f179b2ff50288a76d719e3f2194fbf992",
@@ -52,7 +53,7 @@ public class FileStorageControllerTests
         };
         mockFileStorageService.Setup(service => service.StoreFile(It.IsAny<IFormFile>())).ReturnsAsync(mockResponse);
 
-        // Action
+        // When
         var response = await controller.Upload();
 
         // Assert
@@ -66,6 +67,7 @@ public class FileStorageControllerTests
         var firstObject = objectList[0];
         Assert.Equal(mockResponse.Message, firstObject.Message);
         Assert.Equal(mockResponse.ObjectKey, firstObject.ObjectKey);
+        Assert.NotNull(firstObject.Metadata);
 
         // Assert metadata properties
         var metadata = firstObject.Metadata;
@@ -80,7 +82,7 @@ public class FileStorageControllerTests
     [Fact]
     public async Task Upload_With_No_File()
     {
-        // Set up context for request
+        // Given
         var context = new DefaultHttpContext();
         context.Request.Form = new FormCollection([]); // Empty collection
         controller.ControllerContext = new ControllerContext()
@@ -88,7 +90,7 @@ public class FileStorageControllerTests
             HttpContext = context
         };
 
-        // Action
+        // When
         var response = await controller.Upload();
 
         // Assert
@@ -100,7 +102,7 @@ public class FileStorageControllerTests
     [Fact]
     public async Task Upload_Failed()
     {
-        // Set up context for request
+        // Given
         var context = new DefaultHttpContext();
         context.Request.Form = GetFormCollection();
         controller.ControllerContext = new ControllerContext()
@@ -111,12 +113,12 @@ public class FileStorageControllerTests
         // Mock StoreFile failed to upload or save metadata to db
         var mockResponse = new StoreFileResponse
         {
-            Message = "File store failed",
-            Error = "DynamoDB operation failed. File removed from S3. Error: Error"
+            Message = "File store failed.",
+            Error = "DynamoDB operation failed. File removed from S3. Error: Error."
         };
         mockFileStorageService.Setup(service => service.StoreFile(It.IsAny<IFormFile>())).ReturnsAsync(mockResponse);
 
-        // Action
+        // When
         var response = await controller.Upload();
 
         // Assert
@@ -137,7 +139,7 @@ public class FileStorageControllerTests
     [Fact]
     public async Task Upload_Throw_Exception()
     {
-        // Set up context for request
+        // Given
         var context = new DefaultHttpContext();
         context.Request.Form = GetFormCollection();
         controller.ControllerContext = new ControllerContext()
@@ -149,7 +151,7 @@ public class FileStorageControllerTests
         mockFileStorageService.Setup(service => service.StoreFile(It.IsAny<IFormFile>()))
             .ThrowsAsync(new Exception("Invalid AWS credentials."));
 
-        // Action
+        // When
         var response = await controller.Upload();
 
         // Assert
@@ -158,12 +160,90 @@ public class FileStorageControllerTests
         Assert.Contains("Something went wrong:", result.Value.ToString());
     }
 
+    [Fact]
+    public async Task Download_File()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        string fileContent = "This is a test file";
+        var fileStream = new MemoryStream(Encoding.UTF8.GetBytes(fileContent));
+
+        mockFileStorageService
+            .Setup(service => service.DownloadFile(fileName))
+            .ReturnsAsync(fileStream);
+
+        // When
+        var response = await controller.Download(fileName);
+
+        // Assert
+        var result = Assert.IsType<FileStreamResult>(response);
+
+        // Validate content type and file name
+        Assert.NotNull(result);
+        Assert.Equal("application/octet-stream", result.ContentType);
+        Assert.Equal(fileName, result.FileDownloadName);
+
+        // Ensure the response contains a valid Stream object
+        Assert.NotNull(result.FileStream);
+        Assert.IsType<MemoryStream>(result.FileStream);
+        using (var reader = new StreamReader(result.FileStream, Encoding.UTF8))
+        {
+            string resultContent = await reader.ReadToEndAsync();
+            Assert.Equal(fileContent, resultContent);
+        }
+    }
+
+    [Fact]
+    public async Task Download_File_Without_Name()
+    {
+        // When
+        var response = await controller.Download("");
+
+        // Assert
+        var result = Assert.IsType<BadRequestObjectResult>(response);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("No file name found.", result.Value);
+    }
+
+    [Fact]
+    public async Task Download_File_Not_Exist()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        mockFileStorageService.Setup(service => service.DownloadFile(fileName)).ReturnsAsync((Stream)null!);
+
+        // When
+        var response = await controller.Download(fileName);
+
+        // Assert
+        var result = Assert.IsType<NotFoundObjectResult>(response);
+        Assert.Equal("File not found.", result.Value);
+    }
+
+    [Fact]
+    public async Task Download_File_Fail()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        mockFileStorageService
+            .Setup(service => service.DownloadFile(fileName))
+            .ThrowsAsync(new Exception("Unexpected error"));
+
+        // When
+        var response = await controller.Download(fileName);
+
+        // Assert
+        var result = Assert.IsType<ObjectResult>(response);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Contains("Something went wrong", result.Value.ToString());
+    }
+
     private FormFile GetMockFile()
     {
         var fileSize = 153600; // Default 150KB
         var fileContent = new byte[fileSize];
         new Random().NextBytes(fileContent);
-        var mockFile = new FormFile(new MemoryStream(fileContent), 0, fileSize, "Data", "text.txt")
+        var mockFile = new FormFile(new MemoryStream(fileContent), 0, fileSize, "Data", "test.txt")
         {
             Headers = new HeaderDictionary(),
             ContentType = "text/plain"

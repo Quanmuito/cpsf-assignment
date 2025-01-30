@@ -1,5 +1,7 @@
 using Moq;
 using Xunit;
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -43,12 +45,13 @@ public class FileStorageServiceTests
     [Fact]
     public async Task Store_File_Success()
     {
+        // Given
         var expectedResult = new StoreFileResponse
         {
-            Message = "File store successfully",
-            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt",
+            Message = "File store successfully.",
+            ObjectKey = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt",
             Metadata = new Metadata {
-                Filename = "text.txt",
+                Filename = "test.txt",
                 ContentType = "text/plain",
                 Size = 153600,
                 Sha256 = "8149d065f3817616faae5b86bdaec5c1b6fabdd77ec1a2dad656d65383e8092f",
@@ -59,9 +62,9 @@ public class FileStorageServiceTests
         };
 
         // Set up chain of responses for AWS clients
-        SetUpAWSMockResponse(expectedResult.ObjectKey);
+        SetUpAWSMockResponseForUpload(expectedResult.ObjectKey);
 
-        // Action
+        // When
         var response = await _fileStorageService.StoreFile(GetMockFile());
 
         // Assert main properties
@@ -83,15 +86,16 @@ public class FileStorageServiceTests
     [Fact]
     public async Task Store_File_Invalid_File_Size()
     {
+        // Given
         var expectedResult = new StoreFileResponse
         {
-            Message = "File store failed",
+            Message = "File store failed.",
             ObjectKey = null,
             Metadata = null,
-            Error = "File size should be between 128KB and 2GB. File name: text.txt",
+            Error = "File size should be between 128KB and 2GB. File name: test.txt.",
         };
 
-        // Action
+        // When
         var response = await _fileStorageService.StoreFile(GetMockFile(100));
 
         // Assert main properties
@@ -105,18 +109,18 @@ public class FileStorageServiceTests
     [Fact]
     public async Task Store_File_Upload_Success_Put_Fail()
     {
-
-        SetUpAWSMockResponse("3f5b8c96-7d71-4c41-98d4-8762f34729a5-text.txt", true);
+        // Given
+        SetUpAWSMockResponseForUpload("3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt", true);
 
         var expectedResult = new StoreFileResponse
         {
-            Message = "File store failed",
+            Message = "File store failed.",
             ObjectKey = null,
             Metadata = null,
-            Error = "DynamoDB operation failed. File removed from S3. Error: Cannot put to DynamoDB",
+            Error = "DynamoDB operation failed. File removed from S3. Error: Cannot put to DynamoDB.",
         };
 
-        // Action
+        // When
         var response = await _fileStorageService.StoreFile(GetMockFile());
 
         // Assert main properties
@@ -127,7 +131,85 @@ public class FileStorageServiceTests
         Assert.Equal(expectedResult.Error, response.Error);
     }
 
-    private void SetUpAWSMockResponse(string key, bool fail = false)
+    [Fact]
+    public async Task Download_File_Success()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        string fileContent = "This is a test file";
+        var fileStream = new MemoryStream(Encoding.UTF8.GetBytes(fileContent));
+        var getObjectResponse = new GetObjectResponse
+        {
+            ResponseStream = fileStream
+        };
+
+        _mockAmazonS3Client
+            .Setup(s3 => s3.GetObjectAsync(
+                    It.Is<GetObjectRequest>(req => true),
+                    It.IsAny<CancellationToken>()
+                ))
+            .ReturnsAsync(getObjectResponse);
+
+        // When
+        var response = await _fileStorageService.DownloadFile(fileName);
+
+        // Then
+        Assert.NotNull(response);
+        Assert.IsType<MemoryStream>(response);
+        using (var reader = new StreamReader(response, Encoding.UTF8))
+        {
+            string resultContent = await reader.ReadToEndAsync();
+            Assert.Equal(fileContent, resultContent);
+        }
+    }
+
+    [Fact]
+    public async Task Download_File_Exceeded_Attempts()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        var s3Ex = new AmazonS3Exception("Service unavailable")
+        {
+            StatusCode = HttpStatusCode.ServiceUnavailable
+        };
+        _mockAmazonS3Client
+            .Setup(s3 => s3.GetObjectAsync(
+                    It.Is<GetObjectRequest>(req => true),
+                    It.IsAny<CancellationToken>()
+                ))
+            .ThrowsAsync(s3Ex);
+
+        // When
+        var exception = await Assert.ThrowsAsync<Exception>(async () => {
+            await _fileStorageService.DownloadFile(fileName);
+        });
+
+        // Assert
+        Assert.Equal("Max retry attempts exceeded when download file: 3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt.", exception.Message);
+    }
+
+    [Fact]
+    public async Task Download_File_Unexpected_Error()
+    {
+        // Given
+        string fileName = "3f5b8c96-7d71-4c41-98d4-8762f34729a5-test.txt";
+        _mockAmazonS3Client
+            .Setup(s3 => s3.GetObjectAsync(
+                    It.Is<GetObjectRequest>(req => true),
+                    It.IsAny<CancellationToken>()
+                ))
+            .ThrowsAsync(new Exception("Unexpected Error"));
+
+        // When
+        var exception = await Assert.ThrowsAsync<Exception>(async () => {
+            await _fileStorageService.DownloadFile(fileName);
+        });
+
+        // Assert
+        Assert.Equal($"Error downloading file: {fileName}. Error: Unexpected Error.", exception.Message);
+    }
+
+    private void SetUpAWSMockResponseForUpload(string key, bool fail = false)
     {
         // Responses for S3 client
         var mockInitiateMultipartUploadResponse = new InitiateMultipartUploadResponse
@@ -157,7 +239,7 @@ public class FileStorageServiceTests
 
         var completeMultipartUploadResponse = new CompleteMultipartUploadResponse
         {
-            Location = "https://storage.s3.amazonaws.com/path/to/text.txt",
+            Location = "https://storage.s3.amazonaws.com/path/to/test.txt",
             BucketName = _config.bucketName,
             Key = key,
             ETag = "\"d8c2eafd90c266e19ab9dcacc479f8af\""
@@ -201,7 +283,7 @@ public class FileStorageServiceTests
         var fileSize = size ?? 153600; // Default 150KB
         var fileContent = new byte[fileSize];
         new Random().NextBytes(fileContent);
-        var mockFile = new FormFile(new MemoryStream(fileContent), 0, fileSize, "Data", "text.txt")
+        var mockFile = new FormFile(new MemoryStream(fileContent), 0, fileSize, "Data", "test.txt")
         {
             Headers = new HeaderDictionary(),
             ContentType = "text/plain"
