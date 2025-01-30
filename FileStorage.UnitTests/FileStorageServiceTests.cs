@@ -153,7 +153,7 @@ public class FileStorageServiceTests
         // When
         var response = await _fileStorageService.DownloadFile(fileName);
 
-        // Then
+        // Assert
         Assert.NotNull(response);
         Assert.IsType<MemoryStream>(response);
         using (var reader = new StreamReader(response, Encoding.UTF8))
@@ -239,17 +239,56 @@ public class FileStorageServiceTests
         // When
         var response = await _fileStorageService.ListFile();
 
-        // Then
+        // Assert
         Assert.NotNull(response);
+        var record = response.First();
+        Assert.Equal("invoice_296709517.pdf", record["Filename"]);
+        Assert.Equal("storage", record["BucketName"]);
+        Assert.Equal("application/pdf", record["ContentType"]);
+        Assert.Equal("161450", record["Size"]);
+        Assert.Equal("8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55", record["Sha256"]);
+        Assert.Equal("2025-01-30T17:02:32.1886791Z", record["UploadedAt"]);
+    }
 
-        // Assert specific field values
-        var fileItem = response.First();
-        Assert.Equal("invoice_296709517.pdf", fileItem["Filename"]);
-        Assert.Equal("storage", fileItem["BucketName"]);
-        Assert.Equal("application/pdf", fileItem["ContentType"]);
-        Assert.Equal("161450", fileItem["Size"]);
-        Assert.Equal("8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55", fileItem["Sha256"]);
-        Assert.Equal("2025-01-30T17:02:32.1886791Z", fileItem["UploadedAt"]);
+    [Fact]
+    public async Task Get_File_Sucess()
+    {
+        // Given
+        string sha256 = "8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55";
+        var attribute = new Dictionary<string, AttributeValue>
+        {
+            { "Filename", new AttributeValue { S = "invoice_296709517.pdf" } },
+            { "BucketName", new AttributeValue { S = "storage" } },
+            { "ContentType", new AttributeValue { S = "application/pdf" } },
+            { "Size", new AttributeValue { N = "161450" } }, // Stored as a number
+            { "Sha256", new AttributeValue { S = sha256 } },
+            { "UploadedAt", new AttributeValue { S = "2025-01-30T17:02:32.1886791Z" } }
+        };
+        var items = new List<Dictionary<string, AttributeValue>> { attribute };
+
+        var queryResponse = new QueryResponse
+        {
+            Items = items
+        };
+
+        _mockDynamoDbClient
+            .Setup(dynamoDb => dynamoDb.QueryAsync(
+                    It.Is<QueryRequest>(req => true),
+                    It.IsAny<CancellationToken>()
+                ))
+            .ReturnsAsync(queryResponse);
+
+        // When
+        var response = await _fileStorageService.GetFile(sha256);
+
+        // Assert
+        Assert.NotNull(response);
+        Assert.Equal("invoice_296709517.pdf", response["Filename"]);
+        Assert.Equal("storage", response["BucketName"]);
+        Assert.Equal("application/pdf", response["ContentType"]);
+        Assert.Equal("161450", response["Size"]);
+        Assert.Equal("8be4a7b8c234cdbc2defef763bd23eec415947769886617206b470bf9bce2e55", response["Sha256"]);
+        Assert.Equal("2025-01-30T17:02:32.1886791Z", response["UploadedAt"]);
     }
 
     private void SetUpAWSMockResponseForUpload(string key, bool fail = false)

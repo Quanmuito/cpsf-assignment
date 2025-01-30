@@ -5,7 +5,6 @@ using Amazon.DynamoDBv2.Model;
 using System.Web;
 using System.Security.Cryptography;
 using System.Net;
-using System.Text.Json;
 
 namespace FileStorage.Services;
 
@@ -189,12 +188,18 @@ public class FileStorageService : IFileStorageService
     {
         var items = await GetAllRecords();
 
-        var result = items.Select(item => item.ToDictionary(
-            kvp => kvp.Key,
-            kvp => kvp.Value.S ?? kvp.Value.N // Extract string or number
-        )).ToList();
+        var result = items.Select(TransfromData).ToList();
 
         return result;
+    }
+
+    /**
+     * Handle find 1 file by sha256
+     */
+    public async Task<Dictionary<string, string>> GetFile(string sha256)
+    {
+        var item = await GetRecord(sha256);
+        return TransfromData(item);
     }
 
     private void ValidateFile(IFormFile file)
@@ -344,6 +349,28 @@ public class FileStorageService : IFileStorageService
     }
 
     /**
+     * Get a record that match condition
+     * https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/DynamoDBv2/MDynamoDBQueryAsyncQueryRequestCancellationToken.html
+     */
+    private async Task<Dictionary<string, AttributeValue>> GetRecord(string sha256)
+    {
+        var request = new QueryRequest
+        {
+            TableName = "Files",
+            IndexName = "Sha256Index", // Query via the GSI
+            KeyConditionExpression = "Sha256 = :shaValue",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                { ":shaValue", new AttributeValue { S = sha256 } }
+            },
+            Limit = 1
+        };
+        var response = await dynamoDbClient.QueryAsync(request);
+
+        return response.Items.First();
+    }
+
+    /**
      * Finalize the SHA-256 hash
      */
     private static string GetFileHash(SHA256 sha256, string fileName)
@@ -355,5 +382,13 @@ public class FileStorageService : IFileStorageService
         }
 
         return BitConverter.ToString(sha256.Hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    private static Dictionary<string, string> TransfromData(Dictionary<string, AttributeValue> item)
+    {
+        return item.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.S ?? kvp.Value.N
+        );
     }
 }

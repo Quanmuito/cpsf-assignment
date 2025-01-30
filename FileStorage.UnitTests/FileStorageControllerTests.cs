@@ -240,7 +240,7 @@ public class FileStorageControllerTests
     public async Task List_Success()
     {
         // Given
-        var mockData = new List<Dictionary<string, string>>
+        var mockResponse = new List<Dictionary<string, string>>
         {
             new Dictionary<string, string> {
                 { "Filename", "test.txt" },
@@ -251,7 +251,7 @@ public class FileStorageControllerTests
                 { "UploadedAt", "2025-01-30T17:40:09.6798488Z" },
             }
         };
-        mockFileStorageService.Setup(service => service.ListFile()).ReturnsAsync(mockData);
+        mockFileStorageService.Setup(service => service.ListFile()).ReturnsAsync(mockResponse);
 
         // When
         var response = await controller.List();
@@ -259,6 +259,14 @@ public class FileStorageControllerTests
         // Assert
         var result = Assert.IsType<OkObjectResult>(response);
         var objectList = Assert.IsType<List<Dictionary<string, string>>>(result.Value);
+
+        // Assert each expected key-value pair exists
+        var record = objectList.First();
+        Assert.Equal("test.txt", record["Filename"]);
+        Assert.Equal("storage", record["BucketName"]);
+        Assert.Equal("text/plain", record["ContentType"]);
+        Assert.Equal("161450", record["Size"]);
+        Assert.Equal("005853fe24980ef2d96eda4ec99d122bc7b2d621ae2f812f499912d4f184a7ef", record["Sha256"]);
     }
 
     [Fact]
@@ -269,6 +277,63 @@ public class FileStorageControllerTests
 
         // When
         var response = await controller.List();
+
+        // Assert
+        var result = Assert.IsType<ObjectResult>(response);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Contains("Something went wrong", result.Value.ToString());
+    }
+
+    [Fact]
+    public async Task Get_Success()
+    {
+        // Given
+        string sha256 = "005853fe24980ef2d96eda4ec99d122bc7b2d621ae2f812f499912d4f184a7ef";
+        var mockResponse = new Dictionary<string, string> {
+            { "Filename", "test.txt" },
+            { "BucketName", "storage" },
+            { "ContentType", "text/plain" },
+            { "Size", "161450" },
+            { "Sha256", sha256 },
+            { "UploadedAt", "2025-01-30T17:40:09.6798488Z" },
+        };
+        mockFileStorageService.Setup(service => service.GetFile(sha256)).ReturnsAsync(mockResponse);
+        // When
+        var response = await controller.Get(sha256);
+
+        // Assert
+        var result = Assert.IsType<OkObjectResult>(response);
+        var record = Assert.IsType<Dictionary<string, string>>(result.Value);
+
+        // Assert each expected key-value pair exists
+        Assert.Equal("test.txt", record["Filename"]);
+        Assert.Equal("storage", record["BucketName"]);
+        Assert.Equal("text/plain", record["ContentType"]);
+        Assert.Equal("161450", record["Size"]);
+        Assert.Equal("005853fe24980ef2d96eda4ec99d122bc7b2d621ae2f812f499912d4f184a7ef", record["Sha256"]);
+    }
+
+    [Fact]
+    public async Task Get_File_Without_Name()
+    {
+        // When
+        var response = await controller.Get("");
+
+        // Assert
+        var result = Assert.IsType<BadRequestObjectResult>(response);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("No sha256 found.", result.Value);
+    }
+
+    [Fact]
+    public async Task Get_Fail()
+    {
+        // Given
+        string sha256 = "005853fe24980ef2d96eda4ec99d122bc7b2d621ae2f812f499912d4f184a7ef";
+        mockFileStorageService.Setup(service => service.GetFile(sha256)).ThrowsAsync(new Exception("Unexpected error"));;
+
+        // When
+        var response = await controller.Get(sha256);
 
         // Assert
         var result = Assert.IsType<ObjectResult>(response);

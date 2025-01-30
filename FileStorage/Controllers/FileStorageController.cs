@@ -76,10 +76,23 @@ public class FileStorageController : ControllerBase
         }
     }
 
-    [HttpGet("{sha256}")]
+    [HttpGet("get/{sha256}")]
     public async Task<IActionResult> Get(string sha256)
     {
-        return Ok(sha256);
+        if (String.IsNullOrEmpty(sha256))
+        {
+            return BadRequest("No sha256 found.");
+        }
+
+        try
+        {
+            var record = await fileStorageService.GetFile(sha256);
+            return Ok(record);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Something went wrong: {ex.Message}.");
+        }
     }
 
 }
