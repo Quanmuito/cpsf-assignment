@@ -7,11 +7,11 @@ services:
       - AWS_ACCESS_KEY_ID=key
       - AWS_SECRET_ACCESS_KEY=secret
     networks:
-      - test-assignment-cpsf
+      - file-storage-system-network
 
   localstack:
     image: localstack/localstack:latest
-    container_name: localstack-cpsf
+    container_name: localstack
     ports:
       - 4566:4566
     environment:
@@ -23,7 +23,7 @@ services:
       - AWS_ACCESS_KEY_ID=key
       - AWS_SECRET_ACCESS_KEY=secret
     networks:
-      - test-assignment-cpsf
+      - file-storage-system-network
     volumes:
       # provision localstack
       - ./init-scripts:/etc/localstack/init/ready.d
@@ -42,19 +42,19 @@ services:
       - AWS_ACCESS_KEY_ID=key
       - AWS_SECRET_ACCESS_KEY=secret
       - AWS_REGION=us-east-1
-      - AWS_ENDPOINT_URL=http://localstack-cpsf:4566
+      - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_BUCKET_NAME=storage
-      - FileS_AWS__ServiceURL=http://localstack-cpsf:4566
+      - FileS_AWS__ServiceURL=http://localstack:4566
       - MIN_SIZE=131072 #128KB
       - MAX_SIZE=2147483648 #2GB
       - DYNAMO_TABLE_NAME=Files
     ports:
       - 8080:8080
     networks:
-      - test-assignment-cpsf
+      - file-storage-system-network
     depends_on:
       - localstack
 
 networks:
-  test-assignment-cpsf:
+  file-storage-system-network:
     driver: bridge

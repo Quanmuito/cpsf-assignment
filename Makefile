@@ -28,7 +28,3 @@ check:
 storage:
 	@echo "S3 Files: $$(aws --endpoint-url=${LOCALSTACK} --region ${REGION} s3api list-objects-v2 --bucket ${S3_BUCKET} --query 'Contents[].Key' | jq -r 'select(. != null) | join(", ")')\n"
 	@echo "DynamoDB items:\n$$(aws --endpoint-url=${LOCALSTACK} --region ${REGION} dynamodb scan --table-name ${DYNAMODB_TABLE} --query 'Items' | jq -r '.[]')"
-
-aws --endpoint-url=http://localhost:4566 --region us-east-1 s3api list-buckets --query "Buckets[].Name" --output json | jq -r '.[]'
-aws --endpoint-url=http://localhost:4566 --region us-east-1 s3api list-objects-v2 --bucket storage --query 'Contents[].Key' | jq -r 'select(. != null) | join("\n")'
-aws --endpoint-url=http://localhost:4566 --region us-east-1 dynamodb scan --table-name Files --query 'Items' | jq -r '.[]'
